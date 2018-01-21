@@ -1,3 +1,5 @@
-construct==2.8.16
+construct==2.8.22
+docopt==0.6.2
 numpy==1.13.3
-Pillow==4.3.0
+olefile==0.44
+Pillow==5.0.0

@@ -6,6 +6,7 @@ import construct as cs
 import numpy as np
 from PIL import Image
 
+supported_image_types = ['.vpb']
 
 header_record_file_metadata = cs.Struct(
     'record_count' / cs.Int8ub,  # Possibly.
@@ -133,19 +134,19 @@ def dump_unknowns(file_names):
         with open(file_name, 'rb') as f:
             h = f.read(2048)
             records = cs.RepeatUntil(lambda obj, lst, ctx: obj.type == 'end', header).parse(h)
-            print('{0: <24}: {1}'.format(file_name, [binascii.hexlify(x) for x in records.search_all('unknown') if x is not None]))
+            print('{0: <24}: {1}'.format(file_name,
+                                         [binascii.hexlify(x) for x in records.search_all('unknown') if x is not None]))
 
 
-def convert_vpb_to_whatever(vpb_file_name, output_file_name):
+def convert_vpb_to_whatever(vpb_file_name, output_file_name, verbose=False):
     """
     Uses PIL to output the image, the format is automatically chosen by the file name extension.
     """
-    with open(vpb_file_name, 'rb') as f:
-        h = f.read(2048)
-        records = cs.RepeatUntil(lambda obj, lst, ctx: obj.type == 'end', header).parse(h)
-        buf = f.read(records.search('image_size_bytes'))
+    buf, records = _parse_header(vpb_file_name)
 
-    print(records)
+    if verbose:
+        print(records)
+
     # Image is Y'CbCr 4:2:2
     image_data = np.frombuffer(buf, dtype='uint8').reshape((records.search('height'), records.search('width') * 2))
 
@@ -160,14 +161,23 @@ def convert_vpb_to_whatever(vpb_file_name, output_file_name):
     output.save(output_file_name)
 
 
-def convert_whatever_to_vpb(input_file_name, vpb_file_name, owner='DEFAULT', description=None, categories=None):
+def _parse_header(vpb_file_name):
+    with open(vpb_file_name, 'rb') as f:
+        h = f.read(2048)
+        records = cs.RepeatUntil(lambda obj, lst, ctx: obj.type == 'end', header).parse(h)
+        buf = f.read(records.search('image_size_bytes'))
+    return buf, records
+
+
+def convert_whatever_to_vpb(input_file_name, vpb_file_name, verbose=False, date_hack=False, owner='DEFAULT',
+                            description=None, categories=None):
     input_image = Image.open(input_file_name)
 
     if input_image.width != 720 or not (input_image.height == 576 or input_image.height == 488):
         # TODO: Scale and fit the incoming image to a TV size.
         raise ValueError
 
-    # Convert to YCbCr colourspace, ignoring alpha.
+    # Convert to YCbCr colour space, ignoring alpha.
     image_channels = input_image.split()
     R = np.frombuffer(image_channels[0].tobytes(), dtype='uint8').reshape((input_image.height, input_image.width))
     G = np.frombuffer(image_channels[1].tobytes(), dtype='uint8').reshape((input_image.height, input_image.width))
@@ -193,9 +203,14 @@ def convert_whatever_to_vpb(input_file_name, vpb_file_name, owner='DEFAULT', des
         f.write(header_record_filetype.build(dict(file_type=u'Picture')))
 
         dt = datetime.now()
+        if date_hack:
+            year = 2005
+        else:
+            year = dt.year
+
         f.write(b'\x98')
         f.write(header_record_file_metadata.build(dict(record_count=1, record_size=16, unknown1=0,
-                                                       day=dt.day, month=dt.month, year=dt.year - 1980,
+                                                       day=dt.day, month=dt.month, year=year - 1980,
                                                        hours=dt.hour, minutes=dt.minute, seconds=dt.second,
                                                        unknown2=0)))
 
@@ -251,3 +266,8 @@ def convert_whatever_to_vpb(input_file_name, vpb_file_name, owner='DEFAULT', des
 
         # Write the image bytes.
         f.write(YCbCr422.tobytes())
+
+    _, records = _parse_header(vpb_file_name)
+
+    if verbose:
+        print(records)
