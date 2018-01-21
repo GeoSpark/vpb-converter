@@ -1,6 +1,8 @@
 Paintbox Converter
 v 0.1
 
+Released under the MIT license: https://opensource.org/licenses/MIT
+
 Some investigatory code into Quantel's VPB image file format.
 
 The images so far seem to be in YCbCr 4:2:2 format, interleaved as Cb Y Cr Y Cb Y Cr Y... with one byte per channel.
