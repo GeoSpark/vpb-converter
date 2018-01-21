@@ -1,2 +1,4 @@
 .idea/
 temp/
+dist/
+pb_conv.spec

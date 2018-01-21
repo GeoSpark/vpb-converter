@@ -27,14 +27,14 @@ they may get added for image formats that support such features, e.g. PNG,
 JPEG, TIFF.
 
 Usage:
-    pb_conv -i INPUT_FILE -o OUTPUT_FILE [--verbose] [--datehack]
+    pb_conv -i FILE -o FILE [--verbose] [--datehack]
     pb_conv (-h | --help)
     pb_conv --version
 
 Options:
-    -i --input     Input image file name. Can be a Quantel file, or any
+    -i --input FILE    Input image file name. Can be a Quantel file, or any
                    standard image file.
-    -o --output    Output image file name. Can be a Quantel file, or any
+    -o --output FILE   Output image file name. Can be a Quantel file, or any
                    standard image file.
     --verbose      Prints metadata from the Quantel image file.
     --datehack     If set, treats the year as 2005 to get around the feature
@@ -57,17 +57,17 @@ if __name__ == '__main__':
 
     arguments = docopt(__doc__, version='Paintbox Converter v0.1')
 
-    input_extension = os.path.splitext(arguments['INPUT_FILE'])[1].lower()
-    output_extension = os.path.splitext(arguments['OUTPUT_FILE'])[1].lower()
+    input_extension = os.path.splitext(arguments['--input'])[1].lower()
+    output_extension = os.path.splitext(arguments['--output'])[1].lower()
 
     if input_extension in vpb.supported_image_types and output_extension in vpb.supported_image_types:
         print('Both files are Quantel images, so there\'s nothing for me to do.')
     elif input_extension not in vpb.supported_image_types and output_extension not in vpb.supported_image_types:
         print('Neither file is a Quantel image, so there\'s nothing for me to do.')
     elif input_extension in vpb.supported_image_types:
-        vpb.convert_vpb_to_whatever(arguments['INPUT_FILE'], arguments['OUTPUT_FILE'], arguments['--verbose'])
+        vpb.convert_vpb_to_whatever(arguments['--input'], arguments['--output'], arguments['--verbose'])
     elif output_extension in vpb.supported_image_types:
-        vpb.convert_whatever_to_vpb(arguments['INPUT_FILE'], arguments['OUTPUT_FILE'], verbose=arguments['--verbose'],
-                                    date_hack=arguments['--date_hack'])
+        vpb.convert_whatever_to_vpb(arguments['--input'], arguments['--output'], verbose=arguments['--verbose'],
+                                    date_hack=arguments['--datehack'])
     else:
         print('I have no idea what\'s happening!')

@@ -185,7 +185,7 @@ def _parse_header(vpb_file_name):
 
 
 def convert_whatever_to_vpb(input_file_name, vpb_file_name, verbose=False, date_hack=False, owner='DEFAULT',
-                            description=None, categories=None):
+                            description='', categories=None):
     input_image = Image.open(input_file_name)
 
     if input_image.width != 720 or not (input_image.height == 576 or input_image.height == 488):
