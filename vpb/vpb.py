@@ -44,7 +44,7 @@ header_record_filename = cs.Struct(
     'file_name' / cs.PascalString(cs.Int16ub, encoding='ascii')
 )
 
-# Always seems to be "Picture".
+# "Picture", "Stencil", "Cutout"
 header_record_filetype = cs.Struct(
     'file_type' / cs.PascalString(cs.Int16ub, encoding='ascii')
 )
@@ -84,31 +84,22 @@ header_record_image_metadata = cs.Struct(
     'unknown4' / cs.Bytes(lambda ctx: ctx.record_size - 20)
 )
 
-header_record_unknown2 = cs.Struct(
+header_record_unknown = cs.Struct(
     'record_count' / cs.Int8ub,  # Possibly.
     'record_size' / cs.Int8ub,  # Size of structure after this field.
-    # \x00\x0d or \x00\x0c
-    'unknown1' / cs.Bytes(2),
-    # \x50\x00 or \xac\x00
-    'unknown2' / cs.Bytes(2)
-)
-
-header_record_unknown1 = cs.Struct(
-    'record_count' / cs.Int8ub,  # Possibly.
-    'record_size' / cs.Int8ub,  # Size of structure after this field.
-    # Always seems to be \x00\x00\x00\x00
-    'unknown1' / cs.Bytes(4)
+    'contents' / cs.Bytes(cs.this.record_count * cs.this.record_size)
 )
 
 header = cs.Struct(
     'type' / cs.Enum(cs.Int8ub,
                      filename=0x02,
                      file_type=0x03,
-                     unknown2=0x04,
+                     unknown_0x04=0x04,
                      owner=0x0A,
                      category=0x0B,
-                     unknown1=0x0D,
+                     unknown_0x0D=0x0D,
                      image_metadata=0x10,
+                     unknown_0x1f=0x1F,
                      file_metadata=0x98,
                      end=0xFF),
 
@@ -117,8 +108,9 @@ header = cs.Struct(
                                         'file_type': header_record_filetype,
                                         'owner': header_record_owner,
                                         'category': header_record_category,
-                                        'unknown1': header_record_unknown1,
-                                        'unknown2': header_record_unknown2,
+                                        'unknown_0x0D': header_record_unknown,
+                                        'unknown_0x04': header_record_unknown,
+                                        'unknown_0x1f': header_record_unknown,
                                         'end': cs.Pass,
                                         'image_metadata': header_record_image_metadata}),
 )
@@ -127,7 +119,7 @@ header = cs.Struct(
 # Using the ITU-R BT.601 standard. See: https://en.wikipedia.org/wiki/YCbCr#ITU-R_BT.601_conversion and
 # http://www.equasys.de/colorconversion.html
 # noinspection PyPep8Naming
-def RGB_to_YCbCr(RGB):
+def _RGB_to_YCbCr(RGB):
     mat = np.array([[0.257, -0.148, 0.439], [0.504, -0.291, -0.368], [0.098, 0.439, -0.071]])
     val = [16.0, 128.0, 128.0] + np.dot(RGB, mat)
 
@@ -135,7 +127,7 @@ def RGB_to_YCbCr(RGB):
 
 
 # noinspection PyPep8Naming
-def YCbCr_to_RGB(YCbCr):
+def _YCbCr_to_RGB(YCbCr):
     mat = np.array([[1.164, 1.164, 1.164], [0.0, -0.392, 2.017], [1.596, -0.813, 0.0]])
     val = (YCbCr - [16.0, 128.0, 128.0])
 
@@ -151,6 +143,11 @@ def dump_unknowns(file_names):
             records = cs.RepeatUntil(lambda obj, lst, ctx: obj.type == 'end', header).parse(h)
             print('{0: <24}: {1}'.format(file_name,
                                          [binascii.hexlify(x) for x in records.search_all('unknown') if x is not None]))
+
+
+def dump_header(vpb_file_name):
+    _, records = _parse_header(vpb_file_name)
+    print(records)
 
 
 def convert_vpb_to_whatever(vpb_file_name, output_file_name, verbose=False):
@@ -169,7 +166,7 @@ def convert_vpb_to_whatever(vpb_file_name, output_file_name, verbose=False):
     Cb = np.repeat(np.copy(image_data[:, ::4]), 2, axis=1)
     Cr = np.repeat(np.copy(image_data[:, 2::4]), 2, axis=1)
     image = np.dstack((Y, Cb, Cr))
-    bar = YCbCr_to_RGB(image)
+    bar = _YCbCr_to_RGB(image)
 
     output = Image.fromarray(bar)
 
@@ -197,7 +194,7 @@ def convert_whatever_to_vpb(input_file_name, vpb_file_name, verbose=False, date_
     R = np.frombuffer(image_channels[0].tobytes(), dtype='uint8').reshape((input_image.height, input_image.width))
     G = np.frombuffer(image_channels[1].tobytes(), dtype='uint8').reshape((input_image.height, input_image.width))
     B = np.frombuffer(image_channels[2].tobytes(), dtype='uint8').reshape((input_image.height, input_image.width))
-    YCbCr = RGB_to_YCbCr(np.dstack([R, G, B]))
+    YCbCr = _RGB_to_YCbCr(np.dstack([R, G, B]))
 
     # Compress the Cb and Cr channels horizontally by doing a simple averaging of pixel pairs. More complex
     # convolutions can be achieved by changing the kernel. May not work properly on odd widths, but that shouldn't be
@@ -242,17 +239,11 @@ def convert_whatever_to_vpb(input_file_name, vpb_file_name, verbose=False, date_
 
         f.write(b'\x10')
         # These seem consistent with PAL-sized images.
-        uk2_unknown1 = b'\x00\x0d'
-        uk2_unknown2 = b'\x50\x00'
-
         im_unknown2 = b'\x08\x37'
         im_unknown3 = b'\x08\xfc'
 
         if input_image.height == 488:
             # These seem consistent with NTSC-sized images.
-            uk2_unknown1 = b'\x00\x0c'
-            uk2_unknown2 = b'\xac\x00'
-
             im_unknown2 = b'\x08\x55'
             im_unknown3 = b'\x07\x94'
 
@@ -267,11 +258,13 @@ def convert_whatever_to_vpb(input_file_name, vpb_file_name, verbose=False, date_
                                                         unknown4=b'')))
 
         f.write(b'\x04')
-        f.write(header_record_unknown2.build(dict(record_count=1, record_size=4, unknown1=uk2_unknown1,
-                                                  unknown2=uk2_unknown2)))
+        if input_image.height == 488:
+            f.write(header_record_unknown.build(dict(record_count=1, record_size=4, contents=b'\x00\x0c\xac\x00')))
+        else:
+            f.write(header_record_unknown.build(dict(record_count=1, record_size=4, contents=b'\x00\x0d\x50\x00')))
 
         f.write(b'\x0d')
-        f.write(header_record_unknown1.build(dict(record_count=1, record_size=4, unknown1=b'\x00\x00\x00\x00')))
+        f.write(header_record_unknown.build(dict(record_count=1, record_size=4, contents=b'\x00\x00\x00\x00')))
 
         # Pad the header.
         f.write(b'\xff' * (1024 - f.tell()))
